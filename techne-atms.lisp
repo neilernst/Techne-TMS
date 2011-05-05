@@ -57,7 +57,7 @@
 	   (informant nil)
 	   (consequence nil)
 	   (antecedents nil))
-
+
 (defun print-just (just stream ignore)
   (declare (ignore ignore))
   (format stream "<~A ~D>" (just-informant just)
@@ -154,7 +154,6 @@
     (push (create-env atms (list node)) (tms-node-label node)))
   node)
 
-
 (defun assume-node (node &aux atms)
   (unless (tms-node-assumption? node)
     (setq atms (tms-node-atms node))
@@ -196,7 +195,7 @@
   (justify-node informant
 		(atms-contra-node (tms-node-atms (car nodes)))
 		nodes))
-
+
 ;;; Label updating
 
 (defun propagate (just antecedent envs &aux new-envs)
@@ -223,7 +222,7 @@
       (rplaca new-envs nil)))
   (setq new-envs (delete nil new-envs :TEST #'eq))
   (unless new-envs (return-from update nil))))
-
+
 (defun update-label (node new-envs &aux envs)
   (setq envs (tms-node-label node))
   (do ((new-envs new-envs (cdr new-envs)))
@@ -278,7 +277,7 @@
 (defun supporting-antecedent? (nodes env)
   (dolist (node nodes t) (unless (in-node? node env) (return nil))))
 
-
+
 (defun remove-node (node &aux atms)
   (if (tms-node-consequences node)
       (error "Can't remove node with consequences"))
@@ -293,7 +292,7 @@
   (dolist (env (tms-node-label node))
     (setf (env-nodes env)
 	  (delete node (env-nodes env) :test #'eq :count 1))))
-
+
 ;;; Creating and extending environments.
 
 (defun create-env (atms assumptions &aux e)
