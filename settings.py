@@ -1,0 +1,6 @@
+OUT_DIR = '/tmp/'
+GOAL_FILE = 'caise12.goal'
+DES_FILE = 'caise12.des'
+WEIGHT_FILE = 'caise12.wt'
+CANVAS_NAME = 'pci-conflict-chelsea'
+ATMS_FILE = 'caise12.techne'
