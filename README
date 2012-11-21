@@ -4,7 +4,7 @@
 - pci-chelsea.graffle - Example from the CAISE 2012 paper
 
 
-Copyright 2010 Neil Ernst. Non-commercial use permitted, with the exception of file techne-atms.lisp, which has the following licence/copyright:
+Copyright 2010 Neil Ernst. Licenced under GPL v3, with the exception of file techne-atms.lisp, which has the following licence/copyright:
 
 Copyright (c) 1986-1993 Kenneth D. Forbus, Johan de Kleer and Xerox
 Corporation.  All Rights Reserved.
