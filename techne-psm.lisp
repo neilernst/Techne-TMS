@@ -47,26 +47,27 @@
 
 (defun shorterp (list1 list2)
   (< (length list1) (length list2)))
-  
+
 ;; track implemented tasks
 (defun mark-implemented (tasks &optional (name "") )
   "Take a list of tasks which the user marked as selected"
   ;; TODO: verify they are actually a valid solution?
   ;; TODO: store old goals .. where do they go.
   (push (list :name name :tasks tasks :date (get-universal-time)) *impl-repo*))
- 
+
 ;;; TELL/UNTELL
+;;; TODO Why do we use the "atom" argument in the signature?
 (defun declare-atomic (atom label sort rekb)
   "Add the pair (ATOM LABEL) to the symbol table"
   ;; if a task or DA, we justify with an assumption to indicate defeasibility
-  (if (or (eql sort :DA) (eql sort :TASK)) 
+  (if (or (eql sort :DA) (eql sort :TASK))
       (progn
         (let  ((ass-node (tms-create-node rekb label :ASSUMPTIONP nil)))
         (let ((fakenode (tms-create-node rekb (concatenate 'string "fake-" label)  :ASSUMPTIONP t)))
           (incf *assm-count*)
           (justify-node (concatenate 'string "fake-just-" label) ass-node (list fakenode))
           ;(setf *assumptions* (nconc *assumptions* (list label))) ; the name
-          (setf (gethash  (concatenate 'string "fake-" label) *labels*) fakenode) 
+          (setf (gethash  (concatenate 'string "fake-" label) *labels*) fakenode)
           ;(nconc *assumption-refs* (list fakenode))) ; the actual node
           ass-node)))
       (progn ;; otherwise, just a simple node
@@ -82,7 +83,7 @@
   (let ((x (gethash (concatenate 'string "fake-" label) *labels*)))
     (justify-node (concatenate 'string "retracted-" label) (contradiction rekb) (list x))
     (remhash (concatenate 'string "fake-" label) *labels* )))
-  
+
 (defun assert-formula (consequent ants sort label rekb)
   "If equivalent formula not yet asserted, add to set of LABELLED SORTED FORMULA."
   ;;TODO ant/cons should be a single arg formula
@@ -91,7 +92,7 @@
     (let ((ass-node (tms-create-node rekb (concatenate 'string "fakeform-" label) :ASSUMPTIONP t)))
       ;; call the ATMS justification method from fake-node + ants to consequent
       ;; add this node to the table for future retraction
-      (setf (gethash  (concatenate 'string "fakeform-" label) *labels*) ass-node) 
+      (setf (gethash  (concatenate 'string "fakeform-" label) *labels*) ass-node)
       (let ((new-ants (append (list ass-node) ants)))
         (justify-node label consequent new-ants)))))
 
@@ -112,7 +113,7 @@
   "Remove the optional status of this goal"
   (setf *opts* (remove goal *opts*)))
 
-(defun assert-mandatory (goal rekb mandatory?) 
+(defun assert-mandatory (goal rekb mandatory?)
   "Flag ATOM as mandatory or not mandatory in solution."
   ;; get the goal name
   ;; (setq goal-name (node-string goal))
@@ -145,9 +146,9 @@
   "Are the set of goals entailed by the rekb?
   entailment of a set of goals mean they are consistent w/ all of at
   least 1 of the other goal's contexts"
-  (setf goal (pop goals))  ;get environments for each goal 
+  (setf goal (pop goals))  ;get environments for each goal
   (setf entailed? nil) ; TODO use LET instead of setf?
-  (dolist (env (tms-node-label goal)) ;env of first goal (tms-node-label goal) 
+  (dolist (env (tms-node-label goal)) ;env of first goal (tms-node-label goal)
     (setf congruent? t)
     (dolist (other goals) ; compare to remaining goals
       (setf all-false? t)
@@ -160,7 +161,7 @@
     (if congruent?
         (setf entailed? t))) ;at least one env in the other goals matches this env.
   ;;TODO again short-circuit would be nice.
-  entailed?) 
+  entailed?)
 
 (defun min-change-task-entailing (goals tasks dist_fn rekb)
   "Return the set of sets of tasks which are a minimal change from the existing solution,
@@ -170,26 +171,26 @@
 
 (defun min-goal-achieve (goals rekb)
   " return the (minimal) sets of envs which entail the goals"
-                                       
+
   (setf entail-sets ())    ; declare a list called entail_sets which holds result
   (setf pivot (pop goals))  ; select a pivot node
   (dolist (env (tms-node-label pivot)) ; for each env in that pivot
     (setf meet-env env)  ; make that env the meet_env
-    (setf add-env? t)  
+    (setf add-env? t)
 
-    (dolist (other goals) 
+    (dolist (other goals)
       (setf all-false? t)
-      (dolist (other-env (tms-node-label other))   ; for each env in that goal find at least one match                                      
+      (dolist (other-env (tms-node-label other))   ; for each env in that goal find at least one match
         (setf outcome (compare-env meet-env other-env))   ; check if env is sup/subset or = to meet_env
-        ;(format t "~%comparison: ~a for nodes ~a and ~a" outcome meet-env other-env) 
-        (cond ((eq :EQ outcome) (setf all-false? nil)) 
+        ;(format t "~%comparison: ~a for nodes ~a and ~a" outcome meet-env other-env)
+        (cond ((eq :EQ outcome) (setf all-false? nil))
               ((eq :S12 outcome) (progn (setf meet-env other-env)
-                                        (setf all-false? nil))) ; if t then that becomes meet env 
+                                        (setf all-false? nil))) ; if t then that becomes meet env
                ((eq :S21 outcome) (setf all-false? nil))
                ((eq nil outcome) ())))
       (if all-false?
           (setf add-env? nil))) ;all envs in this goal were not a match, so the pivot env is invalid.
-    (if add-env? (pushnew meet-env entail-sets))) ; add to the set of acceptable envs 
+    (if add-env? (pushnew meet-env entail-sets))) ; add to the set of acceptable envs
   entail-sets)
 
 (defun get-max-optional-solutions (tasks rekb)
