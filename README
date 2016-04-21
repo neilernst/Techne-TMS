@@ -1,4 +1,4 @@
-# Files relating to  Techne solution finding.
+# Files relating to Techne solution finding.
 - convert_omni_seb.py - Takes an Omnigraffle file and turns it into input for Sebastiani GoalSolve and ATMS (.techne) files
 - drive_seb.py - Driver for the converter
 - pci-chelsea.graffle - Example from the CAISE 2012 paper
