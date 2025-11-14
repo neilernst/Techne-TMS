@@ -1,9 +1,7 @@
 ;;; -*- Mode: LISP; Syntax: Common-lisp; -*-
 
-(load "techne-atms.lisp")
-
 (defpackage #:techne-atms-test
-  (:use #:common-lisp #:fiveam))
+  (:use #:common-lisp #:fiveam #:techne-atms))
 
 (in-package #:techne-atms-test)
 
@@ -17,8 +15,8 @@
     (is (string= "Test ATMS" (atms-title atms)))))
 
 (test test-node-creation
-  (let ((atms (create-atms "Test ATMS"))
-        (node (tms-create-node atms "Test Node")))
+  (let* ((atms (create-atms "Test ATMS"))
+         (node (tms-create-node atms "Test Node")))
     (is (typep node 'tms-node))
     (is (string= "Test Node" (tms-node-datum node)))))
 
