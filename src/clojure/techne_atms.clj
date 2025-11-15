@@ -10,7 +10,9 @@
   weave? explain-node-1 env-string print-justification
   print-env-table print-table)
 
-(defrecord ATMS [title node-counter just-counter env-counter nodes justs contradictions assumptions debugging nogood-table contra-node env-table empty-env node-string enqueue-procedure])
+(defrecord ATMS [title node-counter just-counter env-counter nodes justs contradictions assumptions debugging reporting nogood-table contra-node env-table empty-env node-string enqueue-procedure
+                 ;; Parallel processing fields
+                 parallel? num-cores parallel-threshold operation-thresholds])
 
 (defrecord TMSNode [index datum label justs consequences contradictory? assumption? rules atms])
 
@@ -39,8 +41,68 @@
   `(when (:debugging ~atms)
      (println (format ~msg ~@args))))
 
+(defmacro reporting [atms msg & args]
+  `(when (:reporting ~atms)
+     (println (format ~msg ~@args))))
+
 (defn default-node-string [n]
   (format "%s" (:datum @n)))
+
+;;; Parallel processing utilities
+
+(defn detect-cores []
+  "Detect number of available CPU cores on this system.
+   Returns the number of processors available to the JVM."
+  (.availableProcessors (Runtime/getRuntime)))
+
+(defn should-parallelize?
+  "Determine if parallelization should be used for a collection.
+
+   Args:
+     atms - ATMS atom containing parallel configuration
+     collection-size - Size of collection to be processed
+
+   Returns:
+     true if collection should be processed in parallel, false otherwise
+
+   Parallelization is enabled when:
+     1. :parallel? flag is true in ATMS
+     2. Collection size >= :parallel-threshold
+     3. More than 1 CPU core is available"
+  [atms collection-size]
+  (and (:parallel? @atms)
+       (>= collection-size (:parallel-threshold @atms))
+       (> (:num-cores @atms) 1)))
+
+(defn parallel-threshold-for
+  "Get the parallelization threshold for a specific operation.
+
+   Args:
+     atms - ATMS atom
+     operation - Keyword identifying operation (:weave, :update-label, :new-nogood)
+
+   Returns:
+     Threshold value for this operation (falls back to :parallel-threshold if not specified)"
+  [atms operation]
+  (or (get-in @atms [:operation-thresholds operation])
+      (:parallel-threshold @atms)
+      10))  ;; Default fallback
+
+(defn parallel-config-string
+  "Generate a human-readable string describing parallel configuration.
+
+   Args:
+     atms - ATMS atom
+
+   Returns:
+     String describing parallel settings"
+  [atms]
+  (let [cfg @atms]
+    (if (:parallel? cfg)
+      (format "Parallel processing: ENABLED (cores=%d, threshold=%d)"
+              (:num-cores cfg)
+              (:parallel-threshold cfg))
+      "Parallel processing: DISABLED")))
 
 (defn ordered-insert [item coll test]
   (cond
@@ -61,15 +123,39 @@
 ;;; Basic inference engine interface.
 
 (defn create-atms
+  "Create a new ATMS instance.
+
+   Args:
+     title - Name/description of this ATMS
+
+   Optional keyword args:
+     :debugging - Enable debug output (default: false)
+     :reporting - Enable progress reporting (default: false)
+     :parallel? - Enable parallel processing (default: true)
+     :num-cores - Number of cores to use (default: auto-detect)
+     :parallel-threshold - Min collection size for parallelization (default: 10)
+     :node-string - Custom node string formatter
+     :enqueue-procedure - Custom enqueue procedure"
   ([title] (create-atms title {}))
-  ([title {:keys [node-string debugging enqueue-procedure]
+  ([title {:keys [node-string debugging reporting enqueue-procedure
+                  parallel? num-cores parallel-threshold operation-thresholds]
            :or {node-string default-node-string
                 debugging false
-                enqueue-procedure nil}}]
-   (let [atms (atom (->ATMS title 0 0 0 [] [] [] [] debugging nil nil nil nil node-string enqueue-procedure))]
+                reporting false
+                enqueue-procedure nil
+                parallel? true
+                num-cores nil
+                parallel-threshold 10
+                operation-thresholds {}}}]
+   (let [detected-cores (or num-cores (detect-cores))
+         atms (atom (->ATMS title 0 0 0 [] [] [] [] debugging reporting nil nil nil nil node-string enqueue-procedure
+                            parallel? detected-cores parallel-threshold operation-thresholds))]
      (let [contra-node (tms-create-node atms "The contradiction" {:contradictory? true})
            empty-env (create-env atms [])]
        (swap! atms #(assoc % :contra-node contra-node :empty-env empty-env))
+       (when reporting
+         (println (format "Created ATMS: %s" title))
+         (println (parallel-config-string atms)))
        atms))))
 
 (defn change-atms [atms & {:keys [node-string debugging enqueue-procedure]}]
@@ -108,6 +194,9 @@
      (when assumption?
        (swap! atms #(clojure.core/update % :assumptions conj node))
        (swap! node #(assoc % :label (list (create-env atms [node])))))
+     ;; Report progress every 10 nodes
+     (when (and (:reporting @atms) (zero? (mod new-index 10)))
+       (println (format "  Created %d nodes..." new-index)))
      node)))
 
 (defn assume-node [node]
@@ -132,7 +221,8 @@
 
 (defn justify-node [informant consequence antecedents]
   (let [atms (:atms @consequence)
-        just (atom (->Just (inc (:just-counter @atms))
+        new-index (inc (:just-counter @atms))
+        just (atom (->Just new-index
                            informant
                            consequence
                            antecedents))]
@@ -146,6 +236,9 @@
                (node-string @consequence)
                informant
                (map #(node-string @%) antecedents))
+    ;; Report progress every 20 justifications
+    (when (and (:reporting @atms) (zero? (mod new-index 20)))
+      (println (format "  Created %d justifications..." new-index)))
     (propagate just nil (list (:empty-env @atms)))
     just))
 
@@ -318,6 +411,10 @@
 
 (defn new-nogood [atms cenv just]
   (debugging @atms "  %s new minimal nogood." (print-str @cenv))
+  (when (:reporting @atms)
+    (let [nogood-count (count (mapcat second (:nogood-table @atms)))]
+      (when (zero? (mod (inc nogood-count) 5))
+        (println (format "  Found %d nogoods..." (inc nogood-count))))))
   (swap! cenv #(assoc % :nogood? just))
   (remove-env-from-labels cenv atms)
   (swap! atms #(clojure.core/update % :nogood-table (fn [table] (insert-in-table table cenv))))
@@ -356,7 +453,7 @@
       (enqueuef rule))
     (swap! env #(assoc % :rules [])))
   (doseq [node (:nodes @env)]
-    (swap! node #(clojure.core/update :label (fn [label] (remove #{env} label))))))
+    (swap! node #(clojure.core/update % :label (fn [label] (remove #{env} label))))))
 
 ;;; Generating explanations
 
@@ -476,3 +573,19 @@
   (println msg)
   (doseq [[length bucket] table]
     (println (format "   Length %d, %d" length (count bucket)))))
+
+(defn print-atms-summary [atms]
+  "Print a summary of ATMS statistics"
+  (let [atms-data @atms
+        total-nodes (count (:nodes atms-data))
+        total-assumptions (count (:assumptions atms-data))
+        total-justs (count (:justs atms-data))
+        total-nogoods (count (mapcat second (:nogood-table atms-data)))
+        total-envs (count (mapcat second (:env-table atms-data)))]
+    (println "\n=== ATMS Summary ===")
+    (println (format "Title:        %s" (:title atms-data)))
+    (println (format "Nodes:        %d (%d assumptions)" total-nodes total-assumptions))
+    (println (format "Justifications: %d" total-justs))
+    (println (format "Environments: %d" total-envs))
+    (println (format "Nogoods:      %d" total-nogoods))
+    (println "===================\n")))
