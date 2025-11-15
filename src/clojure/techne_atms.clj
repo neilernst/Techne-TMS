@@ -145,7 +145,7 @@
                 enqueue-procedure nil
                 parallel? true
                 num-cores nil
-                parallel-threshold 10
+                parallel-threshold 30
                 operation-thresholds {}}}]
    (let [detected-cores (or num-cores (detect-cores))
          atms (atom (->ATMS title 0 0 0 [] [] [] [] debugging reporting nil nil nil nil node-string enqueue-procedure
@@ -288,30 +288,103 @@
       (swap! node #(assoc % :label final-new-envs))
       final-new-envs)))
 
-(defn weave [antecedent envs antecedents]
-  (loop [remaining-antecedents (remove #{antecedent} antecedents)
-         current-envs envs]
-    (if (empty? remaining-antecedents)
-      current-envs
-      (let [node (first remaining-antecedents)
-            next-envs (atom [])]
-        (doseq [env current-envs]
-          (doseq [node-env (:label @node)]
+;;; Parallel weave helper functions
+
+(defn remove-subsumed-envs
+  "Remove subsumed environments from a collection. OPTIMIZED version.
+
+   For each new environment, checks if it is:
+   - Subsumed by any existing env (discard it)
+   - Subsumes any existing env (remove those)
+
+   Args:
+     envs - Collection of environment atoms
+
+   Returns:
+     Vector of non-subsumed environments
+
+   Optimization: Avoids creating atoms, uses loop/recur for better performance"
+  [envs]
+  (loop [remaining envs
+         result []]
+    (if (empty? remaining)
+      result
+      (let [new-env (first remaining)
+            rest-envs (rest remaining)
+
+            ;; Check if new-env is subsumed by anything in result
+            subsumed? (some (fn [existing-env]
+                             (let [cmp (compare-env new-env existing-env)]
+                               (or (= cmp :EQ) (= cmp :S21))))
+                           result)]
+        (if subsumed?
+          ;; Skip this env, it's subsumed
+          (recur rest-envs result)
+          ;; Not subsumed, check if it subsumes any in result and filter those out
+          (let [filtered-result (reduce (fn [acc existing-env]
+                                         (let [cmp (compare-env new-env existing-env)]
+                                           (if (= cmp :S12)
+                                             acc  ;; existing-env is subsumed, skip it
+                                             (conj acc existing-env))))
+                                       []
+                                       result)]
+            (recur rest-envs (conj filtered-result new-env))))))))
+
+(defn process-env-with-node
+  "Process a single environment against all labels of a node.
+
+   Args:
+     env - Environment atom to process
+     node - Node atom whose labels to combine with env
+
+   Returns:
+     Vector of new non-nogood environments created by union operations"
+  [env node]
+  (reduce (fn [acc node-env]
             (let [new-env (union-env env node-env)]
-              (when-not (:nogood? @new-env)
-                (let [subsumed? (atom false)]
-                  (doseq [existing-env @next-envs]
-                    (when-not @subsumed?
-                      (when-let [comparison (compare-env new-env existing-env)]
-                        (case comparison
-                          :EQ (reset! subsumed? true)
-                          :S21 (reset! subsumed? true)
-                          :S12 (swap! next-envs #(remove #{existing-env} %))))))
-                  (when-not @subsumed?
-                    (swap! next-envs conj new-env)))))))
-        (if (seq @next-envs)
-          (recur (rest remaining-antecedents) @next-envs)
-          [])))))
+              (if (:nogood? @new-env)
+                acc
+                (conj acc new-env))))
+          []
+          (:label @node)))
+
+(defn weave [antecedent envs antecedents]
+  (let [atms (when (seq antecedents) (:atms @(first antecedents)))]
+    (loop [remaining-antecedents (remove #{antecedent} antecedents)
+           current-envs envs]
+      (if (empty? remaining-antecedents)
+        current-envs
+        (let [node (first remaining-antecedents)
+              node-labels (:label @node)
+
+              ;; Decide whether to use parallel processing
+              use-parallel? (should-parallelize? atms (count current-envs))
+
+              ;; Report parallel activation
+              _ (when (and use-parallel? (:reporting @atms))
+                  (println (format "  [PARALLEL] Weaving %d envs × %d labels (node: %s)"
+                                   (count current-envs)
+                                   (count node-labels)
+                                   ((:node-string @atms) node))))
+
+              ;; Process all environments (parallel or sequential)
+              new-envs-nested (if use-parallel?
+                                ;; PARALLEL PATH
+                                (doall (pmap (fn [env]
+                                               (process-env-with-node env node))
+                                             current-envs))
+                                ;; SEQUENTIAL FALLBACK
+                                (map (fn [env]
+                                       (process-env-with-node env node))
+                                     current-envs))
+
+              ;; Flatten results and remove subsumed environments
+              all-new-envs (apply concat new-envs-nested)
+              next-envs (remove-subsumed-envs all-new-envs)]
+
+          (if (seq next-envs)
+            (recur (rest remaining-antecedents) next-envs)
+            []))))))
 
 (defn in-antecedent? [nodes]
   (or (empty? nodes)

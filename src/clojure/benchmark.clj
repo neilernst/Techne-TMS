@@ -161,7 +161,36 @@
 
    {:name "complex-150"
     :description "Complex problem with 150 nodes (max safe size)"
-    :fn (fn [atms] (create-complex-problem atms 150))}])
+    :fn (fn [atms] (create-complex-problem atms 150))}
+
+   ;; Larger benchmarks for testing parallel performance
+   {:name "chain-100"
+    :description "Chain of 100 nodes"
+    :fn (fn [atms] (create-chain-problem atms 100))}
+
+   {:name "chain-150"
+    :description "Chain of 150 nodes"
+    :fn (fn [atms] (create-chain-problem atms 150))}
+
+   {:name "chain-200"
+    :description "Chain of 200 nodes (large)"
+    :fn (fn [atms] (create-chain-problem atms 200))}
+
+   {:name "pyramid-10x15"
+    :description "Pyramid 10 levels x 15 width (large)"
+    :fn (fn [atms] (create-pyramid-problem atms 10 15))}
+
+   {:name "contradictions-100-30"
+    :description "100 assumptions with 30 contradictions (large)"
+    :fn (fn [atms] (create-contradictions-problem atms 100 30))}
+
+   {:name "complex-200"
+    :description "Complex problem with 200 nodes (large)"
+    :fn (fn [atms] (create-complex-problem atms 200))}
+
+   {:name "complex-300"
+    :description "Complex problem with 300 nodes (very large)"
+    :fn (fn [atms] (create-complex-problem atms 300))}])
 
 ;;; Benchmark runner
 
@@ -171,7 +200,7 @@
   (let [atms (create-atms (str "Benchmark-" (:name benchmark))
                          {:parallel? parallel?
                           :num-cores num-cores
-                          :parallel-threshold 10
+                          :parallel-threshold 30
                           :debugging false
                           :reporting false})
         result (time-ms #((:fn benchmark) atms))]
