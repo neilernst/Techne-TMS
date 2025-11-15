@@ -42,18 +42,18 @@
 (defn default-node-string [n]
   (format "%s" (:datum @n)))
 
-(defn ordered-insert [item list test]
+(defn ordered-insert [item coll test]
   (cond
-    (empty? list) (list item)
-    (test item (first list)) (cons item list)
-    (= item (first list)) list
-    :else (cons (first list) (ordered-insert item (rest list) test))))
+    (empty? coll) (list item)
+    (test item (first coll)) (cons item coll)
+    (= item (first coll)) coll
+    :else (cons (first coll) (ordered-insert item (rest coll) test))))
 
 (defmacro ordered-push [item list test]
   `(swap! ~list ordered-insert ~item ~test))
 
 (defn assumption-order [a1 a2]
-  (< (:index a1) (:index a2)))
+  (< (:index @a1) (:index @a2)))
 
 (defn env-order [e1 e2]
   (< (:index e1) (:index e2)))
@@ -104,9 +104,9 @@
                             (clojure.core/update :node-counter inc)
                             (clojure.core/update :nodes conj node))))
      (when contradictory?
-       (swap! atms #(clojure.core/update :contradictions conj node)))
+       (swap! atms #(clojure.core/update % :contradictions conj node)))
      (when assumption?
-       (swap! atms #(clojure.core/update :assumptions conj node))
+       (swap! atms #(clojure.core/update % :assumptions conj node))
        (swap! node #(assoc % :label (list (create-env atms [node])))))
      node)))
 
@@ -115,7 +115,7 @@
     (let [atms (:atms @node)]
       (debugging @atms "Converting %s into an assumption" (node-string @node))
       (swap! node #(assoc % :assumption? true))
-      (swap! atms #(clojure.core/update :assumptions conj node))
+      (swap! atms #(clojure.core/update % :assumptions conj node))
       (update (list (create-env atms [node]))
               @node
               nil))))
@@ -124,7 +124,7 @@
   (let [atms (:atms @node)]
     (when-not (:contradictory? @node)
       (swap! node #(assoc % :contradictory? true))
-      (swap! atms #(clojure.core/update :contradictions conj node))
+      (swap! atms #(clojure.core/update % :contradictions conj node))
       (loop [nogood (first (:label @node))]
         (when nogood
           (new-nogood atms nogood nil)
@@ -139,9 +139,9 @@
     (swap! atms (fn [a] (-> a
                            (clojure.core/update :just-counter inc)
                            (clojure.core/update :justs conj just))))
-    (swap! consequence #(clojure.core/update :justs conj just))
+    (swap! consequence #(clojure.core/update % :justs conj just))
     (doseq [node antecedents]
-      (swap! node #(clojure.core/update :consequences conj just)))
+      (swap! node #(clojure.core/update % :consequences conj just)))
     (debugging @atms "Justifying %s in terms of %s on %s"
                (node-string @consequence)
                informant
@@ -158,7 +158,6 @@
 ;;; Label updating
 
 (defn propagate [just antecedent envs]
-  (println (format "Propagate called on %s" @just)) ; NEIL
   (when-let [new-envs (weave antecedent envs (:antecedents @just))]
     (update new-envs (:consequence @just) @just)))
 
@@ -192,7 +191,7 @@
           (swap! current-envs conj new-env))))
     (let [final-new-envs (remove nil? (distinct @current-envs))]
       (doseq [new-env final-new-envs]
-        (swap! new-env #(clojure.core/update :nodes conj node)))
+        (swap! new-env #(clojure.core/update % :nodes conj node)))
       (swap! node #(assoc % :label final-new-envs))
       final-new-envs)))
 
@@ -246,9 +245,9 @@
                      (clojure.core/update :assumptions (fn [assumptions] (remove #{node} assumptions)))))
     (doseq [just (:justs @node)]
       (doseq [ant (:antecedents @just)]
-        (swap! ant #(clojure.core/update :consequences (fn [consequences] (remove #{just} consequences))))))
+        (swap! ant #(clojure.core/update % :consequences (fn [consequences] (remove #{just} consequences))))))
     (doseq [env (:label @node)]
-      (swap! env #(clojure.core/update :nodes (fn [nodes] (remove #{node} nodes)))))))
+      (swap! env #(clojure.core/update % :nodes (fn [nodes] (remove #{node} nodes)))))))
 
 ;;; Creating and extending environments.
 
@@ -290,9 +289,8 @@
 ;;; Env tables.
 
 (defn insert-in-table [table env]
-  (let [count (:count @env)
-        entry (assoc table count (conj (get table count []) env))]
-    (sort-by key entry)))
+  (let [count (:count @env)]
+    (assoc table count (conj (get table count []) env))))
 
 (defn lookup-env [assumes]
   (let [atms (:atms @(first assumes))
@@ -322,13 +320,13 @@
   (debugging @atms "  %s new minimal nogood." (print-str @cenv))
   (swap! cenv #(assoc % :nogood? just))
   (remove-env-from-labels cenv atms)
-  (swap! atms #(clojure.core/update :nogood-table (fn [table] (insert-in-table table cenv))))
+  (swap! atms #(clojure.core/update % :nogood-table (fn [table] (insert-in-table table cenv))))
   (let [count (:count @cenv)]
     (doseq [[entry-count entries] (:nogood-table @atms)]
       (when (> entry-count count)
         (doseq [old entries]
           (when (subset-env? cenv old)
-            (swap! atms #(clojure.core/update-in [:nogood-table entry-count] (fn [olds] (remove #{old} olds))))))))
+            (swap! atms #(clojure.core/update-in % [:nogood-table entry-count] (fn [olds] (remove #{old} olds))))))))
     (doseq [[entry-count entries] (:env-table @atms)]
       (when (> entry-count count)
         (doseq [old entries]
